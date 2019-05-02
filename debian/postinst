@@ -1,0 +1,21 @@
+#! /bin/sh -e
+
+case "$1" in
+	configure)
+		adduser --system --home /opt/chain-explorer/bitcore-ltc/home \
+			--quiet --gecos "chain-explorer bitcore-ltc" bitcore-ltc
+		chown -R bitcore-ltc /opt/chain-explorer/bitcore-ltc/home
+		;;
+	abort-upgrade|abort-remove|abort-deconfigure)
+	;;
+	
+	*)
+	    echo "postinst called with unknown argument \`$1'" >&2
+	    exit 1
+	;;
+esac
+
+
+#DEBHELPER#
+
+exit 0

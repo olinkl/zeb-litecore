@@ -1,19 +1,90 @@
-sudo: false
-language: node_js
+dist: trusty
+os: linux
+language: minimal
+stages:
+  - compile
+  - deploy
+
 env:
-  - CXX=g++-4.8 CC=gcc-4.8
-addons:
-  apt:
-    sources:
-      - ubuntu-toolchain-r-test
-    packages:
-      - g++-4.8
-      - gcc-4.8
-      - libzmq3-dev
-node_js:
-  - '0.12'
-  - '4'
+  global:
+    - PACKAGE_NAME=litecore
+      #- DOCKER_NAME_TAG=nodesource/sid:4.4.7
+    - DOCKER_NAME_TAG=debian:sid
+    - LC_ALL=C.UTF-8
+    - BASE_OUTDIR=$TRAVIS_BUILD_DIR/out
+    - PKGING_PACKAGES="build-essential libtool autotools-dev automake pkg-config bsdmainutils curl git ca-certificates ccache devscripts lintian fakeroot debhelper bash-completion dh-systemd dh-make dh-exec git-buildpackage rlwrap"
+before_install:
+    - export BUILD_VERSION=$(date "+%Y%m%d").$TRAVIS_BUILD_NUMBER
+    - export PACKAGE_NAME_VERSION=$PACKAGE_NAME.$BUILD_VERSION.deb
+    - export PATH=$(echo $PATH | tr ':' "\n" | sed '/\/opt\/python/d' | tr "\n" ":" | sed "s|::|:|g")
+    - export PATH=$(echo "$PATH=$PATH:/usr/local/bin" )
+    - BEGIN_FOLD () { echo ""; CURRENT_FOLD_NAME=$1; echo "travis_fold:start:${CURRENT_FOLD_NAME}"; }
+    - END_FOLD () { RET=$?; echo "travis_fold:end:${CURRENT_FOLD_NAME}"; return $RET; }
 install:
-  - npm install
+    - travis_retry docker pull $DOCKER_NAME_TAG
+    - env | grep -E '^(LC_ALL)' | tee /tmp/env
+    - DOCKER_ID=$(docker run $DOCKER_ADMIN -idt --mount type=bind,src=$TRAVIS_BUILD_DIR,dst=$TRAVIS_BUILD_DIR -w $TRAVIS_BUILD_DIR --env-file /tmp/env $DOCKER_NAME_TAG)
+    - DOCKER_EXEC () { docker exec $DOCKER_ID bash -c "cd $PWD && $*"; }
+    - DOCKER_ROOT_EXEC () { docker exec -u root $DOCKER_ID bash -c "cd $PWD && $*"; }
+    - DOCKER_NODE_REPO_4 () { docker exec -u root $DOCKER_ID bash -c "echo 'deb https://deb.nodesource.com/node_4.x sid main' > /etc/apt/sources.list.d/nodesource.list"; }
+    - DOCKER_NODE_REPO_8 () { docker exec -u root $DOCKER_ID bash -c "echo 'deb https://deb.nodesource.com/node_8.x sid main' >> /etc/apt/sources.list.d/nodesource.list"; }
+    - travis_retry DOCKER_EXEC apt-get update
+    - travis_retry DOCKER_EXEC apt-get install software-properties-common --no-install-recommends --no-upgrade -qq
+    - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq $PACKAGES
+    - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq $PKGING_PACKAGES 
+      #- travis_retry DOCKER_EXEC curl https://deb.nodesource.com/node_4.x/pool/main/n/nodejs/nodejs_4.4.7-1nodesource1~sid1_amd64.deb > node.deb && sudo dpkg -i node.deb && rm node.deb
+    - travis_retry DOCKER_ROOT_EXEC whoami
+    - travis_retry DOCKER_NODE_REPO_4
+    - travis_retry DOCKER_NODE_REPO_8
+    - travis_retry DOCKER_ROOT_EXEC curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key --output nodesource.key
+    - travis_retry DOCKER_ROOT_EXEC apt-key add nodesource.key
+   #- travis_retry echo 'deb https://dl.yarnpkg.com/debian/ stable main' | sudo tee /etc/apt/sources.list.d/yarn.list && curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+    - travis_retry DOCKER_EXEC cat /etc/apt/sources.list.d/nodesource.list
+    - travis_retry DOCKER_EXEC apt-get update && DOCKER_EXEC apt-cache show nodejs
+   #- travis_retry DOCKER_EXEC apt-get install -qq -y nodejs=8.16.0-1nodesource1
+    - travis_retry DOCKER_EXEC apt-get install -qq -y nodejs=4.8.7-1nodesource1
+    - travis_retry DOCKER_EXEC which node
+    - travis_retry DOCKER_EXEC nodejs --version
+   #- travis_retry DOCKER_EXEC ln -s /usr/bin/node /usr/bin/nodejs
+   #- travis_retry DOCKER_EXEC node --version && nodejs --version
+   #- travis_retry DOCKER_EXEC apt install --no-install-recommends -qq -y npm
+   #- travis_retry DOCKER_EXEC npm install -g yarnpkg
+   #- travis_retry DOCKER_EXEC export PATH=$HOME/.yarn/bin:$PATH && yarn --version
+    - travis_retry DOCKER_EXEC pwd
+    - travis_retry DOCKER_EXEC npm --version
+   #- travis_retry DOCKER_EXEC npm install -g npm
+    - travis_retry DOCKER_EXEC npm install
+    - travis_retry git remote -v
+    - travis_retry git branch -a
+    - travis_retry git config remote.origin.fetch
+    - travis_retry git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    - travis_retry git fetch origin
+    - travis_retry git branch -r
+    - travis_retry git branch -r | grep -v '\->' | while read remote; do git branch --track "${remote#origin/}" "$remote"; done
+   #- travis_retry git checkout -b pristine-tar origin/pristine-tar
+   #- travis_retry git checkout -b upstream origin/upstream
+    - travis_retry git checkout master
+    - travis_retry git branch -a
 script:
-  - npm run test
+    - export TRAVIS_COMMIT_LOG=`git log --format=fuller -1`
+    - OUTDIR=$BASE_OUTDIR/$TRAVIS_PULL_REQUEST/$TRAVIS_JOB_NUMBER-$HOST
+    - BEGIN_FOLD debuild; DOCKER_EXEC gbp buildpackage --git-ignore-new -us -uc -b; END_FOLD
+
+after_script:
+  - echo $TRAVIS_COMMIT_RANGE
+  - echo $TRAVIS_COMMIT_LOG
+
+jobs:
+  include:
+
+    - stage: compile
+      name: c
+      env: >-
+        HOST=x86_64-unknown-linux-gnu
+        GOAL="install"
+
+    - stage: deploy
+      name: d
+      env: >-
+        HOST=x86_64-unknown-linux-gnu
+        GOAL="deploy"

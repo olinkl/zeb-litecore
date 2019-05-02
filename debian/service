@@ -1,0 +1,13 @@
+[Unit]
+Description=bitcore-ltc
+
+[Service]
+ExecStart=/opt/chain-explorer/bitcore-ltc/bitcore/bin/litecored
+Restart=always
+RestartSec=5
+TimeoutStopSec=900
+User=bitcore-ltc
+WorkingDirectory=/opt/chain-explorer/bitcore-ltc/home
+
+[Install]
+WantedBy=multi-user.target

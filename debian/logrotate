@@ -1,0 +1,9 @@
+/opt/chain-explorer/bitcore-ltc/home/.litecoin/data/debug.log {
+        rotate 7
+        daily
+        compress
+        missingok
+        notifempty
+        copytruncate
+}
+
