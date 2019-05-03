@@ -1,4 +1,6 @@
+contrib/bitcoin/bitcoin.conf /opt/chain-explorer/bitcore-ltc/home/.litecoin/data
 contrib/bitcore /opt/chain-explorer/bitcore-ltc
 contrib/bitcore/bitcore-ltc-cli /usr/bin
 contrib/bitcore/bitcore-ltc-daemon /usr/bin
 contrib/bitcore/litecore-node.json /opt/chain-explorer/bitcore-ltc/home/.litecoin
+contrib/nginx/80-bitcore-ltc /etc/nginx/sites-available

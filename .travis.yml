@@ -12,7 +12,9 @@ env:
     - DOCKER_NAME_TAG=debian:sid
     - LC_ALL=C.UTF-8
     - BASE_OUTDIR=$TRAVIS_BUILD_DIR/out
-    - PKGING_PACKAGES="build-essential libtool autotools-dev automake pkg-config bsdmainutils curl git ca-certificates ccache devscripts lintian fakeroot debhelper bash-completion dh-systemd dh-make dh-exec git-buildpackage rlwrap"
+    - PKGING_PACKAGES="build-essential libtool autotools-dev automake pkg-config bsdmainutils curl git ca-certificates ccache devscripts lintian fakeroot debhelper bash-completion dh-systemd dh-make dh-exec git-buildpackage rlwrap pristine-tar"
+    - DEPS_PACKAGES="libzmq3-dev"
+
 before_install:
     - export BUILD_VERSION=$(date "+%Y%m%d").$TRAVIS_BUILD_NUMBER
     - export PACKAGE_NAME_VERSION=$PACKAGE_NAME.$BUILD_VERSION.deb
@@ -20,6 +22,7 @@ before_install:
     - export PATH=$(echo "$PATH=$PATH:/usr/local/bin" )
     - BEGIN_FOLD () { echo ""; CURRENT_FOLD_NAME=$1; echo "travis_fold:start:${CURRENT_FOLD_NAME}"; }
     - END_FOLD () { RET=$?; echo "travis_fold:end:${CURRENT_FOLD_NAME}"; return $RET; }
+
 install:
     - travis_retry docker pull $DOCKER_NAME_TAG
     - env | grep -E '^(LC_ALL)' | tee /tmp/env
@@ -29,11 +32,10 @@ install:
     - DOCKER_NODE_REPO_4 () { docker exec -u root $DOCKER_ID bash -c "echo 'deb https://deb.nodesource.com/node_4.x sid main' > /etc/apt/sources.list.d/nodesource.list"; }
     - DOCKER_NODE_REPO_8 () { docker exec -u root $DOCKER_ID bash -c "echo 'deb https://deb.nodesource.com/node_8.x sid main' >> /etc/apt/sources.list.d/nodesource.list"; }
     - travis_retry DOCKER_EXEC apt-get update
-    - travis_retry DOCKER_EXEC apt-get install software-properties-common --no-install-recommends --no-upgrade -qq
-    - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq $PACKAGES
+    - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq software-properties-common
     - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq $PKGING_PACKAGES 
+    - travis_retry DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -qq $DEPS_PACKAGES
       #- travis_retry DOCKER_EXEC curl https://deb.nodesource.com/node_4.x/pool/main/n/nodejs/nodejs_4.4.7-1nodesource1~sid1_amd64.deb > node.deb && sudo dpkg -i node.deb && rm node.deb
-    - travis_retry DOCKER_ROOT_EXEC whoami
     - travis_retry DOCKER_NODE_REPO_4
     - travis_retry DOCKER_NODE_REPO_8
     - travis_retry DOCKER_ROOT_EXEC curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key --output nodesource.key
@@ -43,17 +45,13 @@ install:
     - travis_retry DOCKER_EXEC apt-get update && DOCKER_EXEC apt-cache show nodejs
    #- travis_retry DOCKER_EXEC apt-get install -qq -y nodejs=8.16.0-1nodesource1
     - travis_retry DOCKER_EXEC apt-get install -qq -y nodejs=4.8.7-1nodesource1
-    - travis_retry DOCKER_EXEC which node
     - travis_retry DOCKER_EXEC nodejs --version
-   #- travis_retry DOCKER_EXEC ln -s /usr/bin/node /usr/bin/nodejs
-   #- travis_retry DOCKER_EXEC node --version && nodejs --version
    #- travis_retry DOCKER_EXEC apt install --no-install-recommends -qq -y npm
    #- travis_retry DOCKER_EXEC npm install -g yarnpkg
    #- travis_retry DOCKER_EXEC export PATH=$HOME/.yarn/bin:$PATH && yarn --version
-    - travis_retry DOCKER_EXEC pwd
     - travis_retry DOCKER_EXEC npm --version
    #- travis_retry DOCKER_EXEC npm install -g npm
-    - travis_retry DOCKER_EXEC npm install
+    - travis_retry DOCKER_EXEC npm install --production
     - travis_retry DOCKER_EXEC git remote -v
     - travis_retry DOCKER_EXEC git branch -a
     - travis_retry DOCKER_EXEC git config remote.origin.fetch
@@ -63,28 +61,39 @@ install:
     - travis_retry docker exec -u root $DOCKER_ID bash -c 'git branch -r | grep -v "\->" | while read remote; do git branch --track "${remote#origin/}" "$remote"; done'
    #- travis_retry DOCKER_EXEC git checkout -b pristine-tar origin/pristine-tar
    #- travis_retry DOCKER_EXEC git checkout -b upstream origin/upstream
+    - travis_retry DOCKER_EXEC git checkout pristine-tar
+    - travis_retry DOCKER_EXEC git checkout upstream
+    - travis_retry DOCKER_EXEC git log
     - travis_retry DOCKER_EXEC git checkout master
     - travis_retry DOCKER_EXEC git branch -a
 script:
     - export TRAVIS_COMMIT_LOG=`git log --format=fuller -1`
     - OUTDIR=$BASE_OUTDIR/$TRAVIS_PULL_REQUEST/$TRAVIS_JOB_NUMBER-$HOST
-    - BEGIN_FOLD debuild; DOCKER_EXEC gbp buildpackage --git-ignore-new -us -uc -b; END_FOLD
+    - DOCKER_EXEC gbp buildpackage --git-ignore-new --git-verbose --git-pristine-tar -us -uc -b
+    - DOCKER_EXEC ls -alh ..
+    - DOCKER_EXEC mkdir uploads
+    - DOCKER_EXEC cp ../bitcore-ltc_4.1.1~chainexp-1_amd64.deb ./uploads
 
 after_script:
   - echo $TRAVIS_COMMIT_RANGE
   - echo $TRAVIS_COMMIT_LOG
 
+before_deploy:
+    - sudo apt-get install lftp
+    - openssl aes-256-cbc -K $encrypted_4bb3b579717f_key -iv $encrypted_4bb3b579717f_iv -in sftp_rsa.enc -out /tmp/sftp_rsa -d
+    - eval "$(ssh-agent -s)"
+    - chmod 600 /tmp/sftp_rsa
+    - ssh-add /tmp/sftp_rsa
+    - echo -e "Host aptrepo.adapp.tech\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+
+deploy:
+  provider: script
+  skip_cleanup: true
+  script: ls -alh && lftp -c "open -u pkgupload, sftp://aptrepo.adapp.tech; set ssl-allow yes; set passive-mode yes; set ssl:verify-certificate no; mirror -R $TRAVIS_BUILD_DIR/uploads /uploads; quit"
+
 jobs:
   include:
-
     - stage: compile
-      name: c
+      name: compile
       env: >-
         HOST=x86_64-unknown-linux-gnu
-        GOAL="install"
-
-    - stage: deploy
-      name: d
-      env: >-
-        HOST=x86_64-unknown-linux-gnu
-        GOAL="deploy"
