@@ -1,8 +1,8 @@
-Source: zb-bitcore-ltc
+Source: bitcore-ltc
 Section: chainexplorer
 Priority: optional
 Maintainer: adrien@adapp.tech
-Build-Depends: nodejs (>= 4), nodejs (<< 5), make, build-essential, libzmq3-dev, curl, python, dh-systemd
+Build-Depends: nodejs (>= 4), make, build-essential, libzmq3-dev, curl, python, dh-systemd
 Standards-Version: 3.9.5
 
 Package: zb-bitcore-ltc

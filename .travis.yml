@@ -54,17 +54,17 @@ install:
     - travis_retry DOCKER_EXEC npm --version
    #- travis_retry DOCKER_EXEC npm install -g npm
     - travis_retry DOCKER_EXEC npm install
-    - travis_retry git remote -v
-    - travis_retry git branch -a
-    - travis_retry git config remote.origin.fetch
-    - travis_retry git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
-    - travis_retry git fetch origin
-    - travis_retry git branch -r
-    - travis_retry git branch -r | grep -v '\->' | while read remote; do git branch --track "${remote#origin/}" "$remote"; done
-   #- travis_retry git checkout -b pristine-tar origin/pristine-tar
-   #- travis_retry git checkout -b upstream origin/upstream
-    - travis_retry git checkout master
-    - travis_retry git branch -a
+    - travis_retry DOCKER_EXEC git remote -v
+    - travis_retry DOCKER_EXEC git branch -a
+    - travis_retry DOCKER_EXEC git config remote.origin.fetch
+    - travis_retry DOCKER_EXEC git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    - travis_retry DOCKER_EXEC git fetch origin
+    - travis_retry DOCKER_EXEC git branch -r
+    - travis_retry docker exec -u root $DOCKER_ID bash -c 'git branch -r | grep -v "\->" | while read remote; do git branch --track "${remote#origin/}" "$remote"; done'
+   #- travis_retry DOCKER_EXEC git checkout -b pristine-tar origin/pristine-tar
+   #- travis_retry DOCKER_EXEC git checkout -b upstream origin/upstream
+    - travis_retry DOCKER_EXEC git checkout master
+    - travis_retry DOCKER_EXEC git branch -a
 script:
     - export TRAVIS_COMMIT_LOG=`git log --format=fuller -1`
     - OUTDIR=$BASE_OUTDIR/$TRAVIS_PULL_REQUEST/$TRAVIS_JOB_NUMBER-$HOST

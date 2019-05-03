@@ -1,1 +1,1 @@
-contrib/nginx-bitcore-ltc /etc/nginx/sites-available
+contrib/80-bitcore-ltc /etc/nginx/sites-available
